@@ -4,6 +4,17 @@ import Login from './Pages/Login'
 import AuthOtp from './Pages/AuthOtp'
 import Dashboard from './Pages/Dashboard'
 import TicketDetails from './Pages/TicketDetails'
+import { useAuth } from './context/AuthContext.jsx'
+
+const ProtectedRoute = ({ children }) => {
+  const { user } = useAuth();
+  const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+  if (!user && !token) {
+    return <Navigate to="/login" replace />;
+  }
+  return children;
+}
+
 const App = () => {
   return (
     <div>
@@ -11,8 +22,24 @@ const App = () => {
         <Route path="/" element={<Navigate to="/login" replace />} />
         <Route path="/login" element={<Login />} />
         <Route path="/auth-otp" element={<AuthOtp />} />
-        <Route path="/dashboard" element={<Dashboard />} />
-        <Route path="/tickets/:id" element={<TicketDetails />} />
+        <Route
+          path="/dashboard"
+          element={
+            <ProtectedRoute>
+              <Dashboard />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/tickets/:id"
+          element={
+            <ProtectedRoute>
+              <TicketDetails />
+            </ProtectedRoute>
+          }
+        />
+        {/* Catch-all: redirect unknown routes to login */}
+        <Route path="*" element={<Navigate to="/login" replace />} />
       </Routes>
     </div>
   )

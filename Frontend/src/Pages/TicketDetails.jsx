@@ -9,74 +9,33 @@ const TicketDetails = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [updating, setUpdating] = useState(false);
+  const [selectedStatus, setSelectedStatus] = useState('Open');
 
   useEffect(() => {
     const fetchTicketDetails = async () => {
       try {
         setLoading(true);
-        // Try to fetch without auth; if it fails, fall back to demo data
-        let data = null;
-        try {
-          const res = await fetch(`http://localhost:3000/api/tickets/${id}`);
-          if (res.ok) {
-            data = await res.json();
-          }
-        } catch (_) {
-          // ignore network/auth errors and use demo data
+        const token = localStorage.getItem('token');
+        if (!token) {
+          navigate('/login');
+          return;
         }
-
-        if (!data) {
-          const demo = [
-            {
-              _id: 'tkn-1001',
-              token: '1001',
-              subject: 'Cannot login to portal',
-              name: 'Alice Johnson',
-              email: 'alice@example.com',
-              phone: '+91 98765 43210',
-              description: 'Getting an error when trying to login to the admin portal.',
-              priority: 'High',
-              status: 'Open',
-              createdAt: new Date().toISOString(),
-              attachments: [],
-            },
-            {
-              _id: 'tkn-1002',
-              token: '1002',
-              subject: 'Invoice not generated',
-              name: 'Rahul Mehta',
-              email: 'rahul@example.com',
-              phone: '+91 98765 11111',
-              description: 'Monthly invoice is not visible for this cycle.',
-              priority: 'Medium',
-              status: 'In Progress',
-              createdAt: new Date(Date.now() - 86400000).toISOString(),
-              attachments: [],
-            },
-            {
-              _id: 'tkn-1003',
-              token: '1003',
-              subject: 'Request for feature enhancement',
-              name: 'Sara Lee',
-              email: 'sara@example.com',
-              phone: '+91 98765 22222',
-              description: 'It would be great to have export functionality in reports.',
-              priority: 'Low',
-              status: 'Closed',
-              createdAt: new Date(Date.now() - 2*86400000).toISOString(),
-              attachments: [],
-            },
-          ];
-          data = demo.find((t) => t._id === id || t.token === id) || null;
+        const api = import.meta.env.VITE_ADMIN_API;
+        const res = await fetch(`${api}/api/tickets/${id}`, {
+          headers: { 'Authorization': `Bearer ${token}` },
+          credentials: 'include',
+        });
+        if (res.status === 401) {
+          navigate('/login');
+          return;
         }
-
-        if (!data) {
-          setError('Ticket not found');
-          setTicket(null);
-        } else {
-          setTicket(data);
-          setError(null);
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.message || 'Failed to fetch ticket details');
         }
+        const data = await res.json();
+        setTicket(data);
+        setError(null);
       } catch (err) {
         console.error('Error fetching ticket:', err);
         setError('Failed to load ticket details');
@@ -87,6 +46,59 @@ const TicketDetails = () => {
 
     fetchTicketDetails();
   }, [id, navigate]);
+
+  // Handle status selection changes locally
+  const handleStatusChange = (e) => {
+    setSelectedStatus(e.target.value);
+  };
+
+  // Persist status update to backend and optionally trigger email
+  const handleUpdateStatus = async () => {
+    if (!ticket) return;
+    try {
+      setUpdating(true);
+      const token = localStorage.getItem('token');
+      if (!token) {
+        navigate('/login');
+        return;
+      }
+      const api = import.meta.env.VITE_ADMIN_API;
+      const res = await fetch(`${api}/api/tickets/${ticket._id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        credentials: 'include',
+        body: JSON.stringify({ status: selectedStatus }),
+      });
+      if (res.status === 401) {
+        navigate('/login');
+        return;
+      }
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.message || 'Failed to update status');
+      }
+      const updated = await res.json();
+      setTicket(updated);
+      // ensure local status reflects server
+      setSelectedStatus(updated.status || selectedStatus);
+      alert('Ticket status updated successfully');
+    } catch (err) {
+      console.error('Error updating status:', err);
+      alert(err.message || 'Failed to update status');
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  // Keep local selected status in sync once ticket loads
+  useEffect(() => {
+    if (ticket?.status) {
+      setSelectedStatus(ticket.status);
+    }
+  }, [ticket]);
 
   const getStatusBadge = (status) => {
     const statusStyles = {
@@ -166,7 +178,7 @@ const TicketDetails = () => {
               <div className="mt-4 md:mt-0 flex items-center gap-3">
                 {getStatusBadge(ticket.status)}
                 <select
-                  value={ticket.status || 'Open'}
+                  value={selectedStatus}
                   onChange={handleStatusChange}
                   disabled={updating}
                   className="px-3 py-2 rounded-lg border border-orange-200 bg-white text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-orange-400/40 focus:border-orange-400 transition disabled:opacity-60"
@@ -175,6 +187,17 @@ const TicketDetails = () => {
                   <option value="In Progress">In Progress</option>
                   <option value="Closed">Closed</option>
                 </select>
+                <button
+                  onClick={handleUpdateStatus}
+                  disabled={updating || selectedStatus === ticket.status}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    updating || selectedStatus === ticket.status
+                      ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                      : 'bg-orange-500 text-white hover:bg-orange-600'
+                  }`}
+                >
+                  {updating ? 'Updating...' : 'Update Status'}
+                </button>
               </div>
             </div>
 
@@ -252,14 +275,16 @@ const TicketDetails = () => {
                         <p className="text-sm text-gray-500">
                           {attachment.size ? `${(attachment.size / 1024).toFixed(2)} KB` : 'Size not available'}
                         </p>
-                        <a 
-                          href={`http://localhost:3000/api/tickets/${ticket._id}/attachments/${attachment._id}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-sm text-orange-600 hover:text-orange-700 hover:underline mt-1 inline-block"
-                        >
-                          Download
-                        </a>
+                        {attachment.url && (
+                          <a 
+                            href={attachment.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-sm text-orange-600 hover:text-orange-700 hover:underline mt-1 inline-block"
+                          >
+                            Download
+                          </a>
+                        )}
                       </div>
                     </div>
                   </div>

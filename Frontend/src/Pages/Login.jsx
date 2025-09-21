@@ -27,12 +27,26 @@ const Login = () => {
     }
     setError('')
     setLoading(true)
-
-    // Simulate API call delay before navigating
-    setTimeout(() => {
-      setLoading(false)
-      navigate('/auth-otp', { state: { email: trimmed } })
-    }, 1200)
+    const adminApi = import.meta.env.VITE_ADMIN_API;
+    fetch(`${adminApi}/api/auth/request-otp`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: emailLc }),
+    })
+      .then(async (res) => {
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}))
+          throw new Error(data.message || 'Failed to request OTP')
+        }
+      })
+      .then(() => {
+        setLoading(false)
+        navigate('/auth-otp', { state: { email: emailLc } })
+      })
+      .catch((err) => {
+        setLoading(false)
+        setError(err.message || 'Failed to request OTP')
+      })
   }
 
   return (

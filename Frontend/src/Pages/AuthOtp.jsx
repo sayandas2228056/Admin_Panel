@@ -3,12 +3,14 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { ArrowRight, ShieldCheck } from 'lucide-react'
 import Logo from '../assets/Logo.jpg'
+import { useAuth } from '../context/AuthContext'
 
 const DIGITS = 6
 
 const AuthOtp = () => {
   const location = useLocation()
   const navigate = useNavigate()
+  const { login } = useAuth()
   const emailFromState = location?.state?.email || ''
 
   const [otp, setOtp] = useState(Array(DIGITS).fill(''))
@@ -80,12 +82,30 @@ const AuthOtp = () => {
       return
     }
     setLoading(true)
-    // Simulate verification
-    setTimeout(() => {
-      setLoading(false)
-      // On success, navigate to dashboard (or desired route)
-      navigate('/dashboard')
-    }, 1200)
+    const code = otp.join('')
+    const adminApi = import.meta.env.VITE_ADMIN_API;
+    fetch(`${adminApi}/api/auth/verify-otp`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: emailFromState, code }),
+    })
+      .then(async (res) => {
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok) {
+          throw new Error(data.message || 'Invalid or expired OTP')
+        }
+        return data
+      })
+      .then((data) => {
+        const { token, user } = data
+        login(user, token)
+        setLoading(false)
+        navigate('/dashboard')
+      })
+      .catch((err) => {
+        setLoading(false)
+        setError(err.message || 'OTP verification failed')
+      })
   }
 
   return (

@@ -1,8 +1,13 @@
 import React, { useEffect, useState } from "react";
 import { Ticket, Clock, RefreshCw, Search, Filter, AlertCircle, Camera } from "lucide-react";
+import { useNavigate } from 'react-router-dom'
 import Cards from "../Components/Cards";
+import { useAuth } from "../context/AuthContext";
+import ScreenshotUpload from "../Components/ScreenshotUpload";
 
 const Dashboard = () => {
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
   const [tickets, setTickets] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -11,54 +16,34 @@ const Dashboard = () => {
   const [statusFilter, setStatusFilter] = useState("All");
   const [showScreenshotModal, setShowScreenshotModal] = useState(false);
 
-  // Load demo data locally so Dashboard works without authentication/API
   const fetchTickets = async () => {
     setLoading(true);
     try {
-      const demo = [
-        {
-          _id: 'tkn-1001',
-          token: '1001',
-          subject: 'Cannot login to portal',
-          name: 'Alice Johnson',
-          email: 'alice@example.com',
-          phone: '+91 98765 43210',
-          description: 'Getting an error when trying to login to the admin portal.',
-          priority: 'High',
-          status: 'Open',
-          createdAt: new Date().toISOString(),
+      const token = localStorage.getItem('token');
+      if (!token) throw new Error('Unauthorized');
+      const api = import.meta.env.VITE_ADMIN_API;
+      const res = await fetch(`${api}/api/tickets`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
         },
-        {
-          _id: 'tkn-1002',
-          token: '1002',
-          subject: 'Invoice not generated',
-          name: 'Rahul Mehta',
-          email: 'rahul@example.com',
-          phone: '+91 98765 11111',
-          description: 'Monthly invoice is not visible for this cycle.',
-          priority: 'Medium',
-          status: 'In Progress',
-          createdAt: new Date(Date.now() - 86400000).toISOString(),
-        },
-        {
-          _id: 'tkn-1003',
-          token: '1003',
-          subject: 'Request for feature enhancement',
-          name: 'Sara Lee',
-          email: 'sara@example.com',
-          phone: '+91 98765 22222',
-          description: 'It would be great to have export functionality in reports.',
-          priority: 'Low',
-          status: 'Closed',
-          createdAt: new Date(Date.now() - 2*86400000).toISOString(),
-        },
-      ]
-      setTickets(demo)
-      setError(null)
+        credentials: 'include',
+      });
+      if (res.status === 401) {
+        logout();
+        navigate('/login');
+        return;
+      }
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.message || 'Failed to fetch tickets');
+      }
+      const data = await res.json();
+      setTickets(data);
+      setError(null);
     } catch (e) {
-      setError('Failed to load tickets (demo).')
+      setError(e.message || 'Failed to load tickets');
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
   }
 
@@ -67,10 +52,31 @@ const Dashboard = () => {
     fetchTickets();
   };
 
-  const handleStatusChange = (ticketId, newStatus) => {
-    setTickets((prev) =>
-      prev.map((t) => (t._id === ticketId ? { ...t, status: newStatus } : t))
-    )
+  const handleStatusChange = async (ticketId, newStatus) => {
+    const token = localStorage.getItem('token');
+    // Optimistic update
+    setTickets((prev) => prev.map((t) => (t._id === ticketId ? { ...t, status: newStatus } : t)));
+    try {
+      const api = import.meta.env.VITE_ADMIN_API;
+      const res = await fetch(`${api}/api/tickets/${ticketId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({ status: newStatus }),
+        credentials: 'include',
+      });
+      if (!res.ok) {
+        throw new Error('Failed to update status');
+      }
+      const updated = await res.json();
+      setTickets((prev) => prev.map((t) => (t._id === ticketId ? updated : t)));
+    } catch (e) {
+      // Revert if failed
+      await fetchTickets();
+      alert('Failed to update status');
+    }
   }
 
   // Set up a listener for the popstate event to detect when user navigates back
@@ -100,7 +106,15 @@ const Dashboard = () => {
     if (window.confirm("Are you sure you want to delete this ticket?")) {
       try {
         setDeletingId(ticketId);
-        setTickets(tickets.filter(ticket => ticket._id !== ticketId));
+        const token = localStorage.getItem('token');
+        const api = import.meta.env.VITE_ADMIN_API;
+        const res = await fetch(`${api}/api/tickets/${ticketId}`, {
+          method: 'DELETE',
+          headers: { 'Authorization': `Bearer ${token}` },
+          credentials: 'include',
+        });
+        if (!res.ok) throw new Error('Failed to delete ticket');
+        setTickets((prev) => prev.filter(ticket => ticket._id !== ticketId));
       } catch (err) {
         console.error('Error deleting ticket:', err);
         alert('Failed to delete ticket. Please try again.');
@@ -155,7 +169,7 @@ const Dashboard = () => {
               : error}
           </p>
           <button 
-            onClick={() => window.location.reload()}
+            onClick={() => fetchTickets()}
             className="w-full bg-gradient-to-r from-orange-500 to-amber-600 hover:from-orange-600 hover:to-amber-700 text-white font-semibold py-3 px-6 rounded-2xl transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl mb-3"
           >
             <RefreshCw className="w-5 h-5 inline mr-2" />

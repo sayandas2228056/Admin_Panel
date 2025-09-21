@@ -192,7 +192,7 @@ const Cards = ({ tickets, deletingId, onDelete, onStatusChange }) => {
         </div>
       ))}
       
-      <style jsx>{`
+      <style>{`
         @keyframes slideInUp {
           from {
             opacity: 0;
