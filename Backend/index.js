@@ -36,6 +36,8 @@ app.get('/', (req, res) => {
 });
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/tickets', require('./routes/tickets'));
+app.use('/api/clients', require('./routes/clients'));
+// Agents and Settings routes removed
 
 app.listen(port, () => {
   console.log(`✅ Server is running at http://localhost:${port}`);

@@ -16,14 +16,14 @@ const Cards = ({ tickets, deletingId, onDelete, onStatusChange }) => {
     }
   };
 
-  const getPriorityColor = (priority) => {
-    switch (priority?.toLowerCase()) {
-      case "high":
-        return "bg-red-500 shadow-red-200";
-      case "medium":
+  const getStatusDotColor = (status) => {
+    switch (status) {
+      case "Open":
+        return "bg-green-500 shadow-green-200";
+      case "In Progress":
         return "bg-amber-500 shadow-amber-200";
-      case "low":
-        return "bg-emerald-500 shadow-emerald-200";
+      case "Closed":
+        return "bg-red-500 shadow-red-200";
       default:
         return "bg-orange-500 shadow-orange-200";
     }
@@ -71,7 +71,7 @@ const Cards = ({ tickets, deletingId, onDelete, onStatusChange }) => {
                     <p className="font-bold text-xl">#{ticket.token}</p>
                   </div>
                 </div>
-                <div className={`w-4 h-4 rounded-full ${getPriorityColor(ticket.priority || 'medium')} shadow-lg`}></div>
+                <div className={`w-4 h-4 rounded-full ${getStatusDotColor(ticket.status)} shadow-lg`}></div>
               </div>
               <h3 className="font-bold text-xl mb-2 leading-tight line-clamp-2">{ticket.subject}</h3>
               <div className="flex items-center justify-between mt-2">

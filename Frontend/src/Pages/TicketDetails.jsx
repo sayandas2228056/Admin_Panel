@@ -113,18 +113,7 @@ const TicketDetails = () => {
     );
   };
 
-  const getPriorityBadge = (priority) => {
-    const priorityStyles = {
-      'high': 'bg-red-100 text-red-800',
-      'medium': 'bg-yellow-100 text-yellow-800',
-      'low': 'bg-green-100 text-green-800',
-    };
-    return (
-      <span className={`px-3 py-1 rounded-full text-sm font-medium ${priorityStyles[priority?.toLowerCase()] || 'bg-gray-100 text-gray-800'}`}>
-        {priority || 'Not specified'}
-      </span>
-    );
-  };
+  // Priority removed from UI
 
   if (loading) {
     return (
@@ -215,12 +204,7 @@ const TicketDetails = () => {
                 </div>
               </div>
 
-              <div>
-                <h3 className="text-sm font-medium text-gray-500 mb-2">Priority</h3>
-                <div className="flex items-center">
-                  {getPriorityBadge(ticket.priority)}
-                </div>
-              </div>
+              {/* Priority removed */}
 
               <div>
                 <h3 className="text-sm font-medium text-gray-500 mb-2">Created</h3>

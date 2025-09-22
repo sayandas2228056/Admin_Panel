@@ -17,7 +17,6 @@ const TicketSchema = new mongoose.Schema(
     email: { type: String },
     phone: { type: String },
     description: { type: String },
-    priority: { type: String, enum: ['Low', 'Medium', 'High'], default: 'Medium' },
     status: { type: String, enum: ['Open', 'In Progress', 'Closed'], default: 'Open' },
     attachments: [AttachmentSchema],
   },

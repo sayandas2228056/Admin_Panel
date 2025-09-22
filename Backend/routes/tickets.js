@@ -37,12 +37,11 @@ router.get('/:id', async (req, res) => {
 router.patch('/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const { status, subject, description, priority } = req.body || {};
+    const { status, subject, description } = req.body || {};
     const update = {};
     if (status) update.status = status;
     if (subject) update.subject = subject;
     if (description) update.description = description;
-    if (priority) update.priority = priority;
 
     // Load existing ticket to check for status changes
     const existing = await Ticket.findById(id);

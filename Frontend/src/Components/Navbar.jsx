@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
-import { Menu, X, ChevronDown, User, LogOut } from 'lucide-react';
+import { Menu, X, ChevronDown, LogOut } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
 import Logo from '../assets/Logo.jpg';
 
@@ -15,19 +15,14 @@ const Navbar = () => {
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const profileMenuRef = useRef(null);
 
-  // Hide navbar on auth pages
+  // Check if we should hide the navbar
   const hide = location.pathname === '/login' || location.pathname === '/auth-otp';
-  if (hide) return null;
 
   const handleLogout = () => {
     logout();
     navigate('/login', { replace: true });
     setShowProfileMenu(false);
-  };
-
-  const handleProfileClick = () => {
-    navigate('/profile');
-    setShowProfileMenu(false);
+    setIsMobileMenuOpen(false);
   };
 
   const handleScroll = () => {
@@ -41,6 +36,13 @@ const Navbar = () => {
     setShowProfileMenu(false);
     document.body.style.overflow = !isMobileMenuOpen ? 'hidden' : 'auto';
   };
+
+  // Close mobile menu on route change
+  useEffect(() => {
+    setIsMobileMenuOpen(false);
+    setShowProfileMenu(false);
+    document.body.style.overflow = 'auto';
+  }, [location.pathname]);
 
   // Close dropdowns when clicking outside
   useEffect(() => {
@@ -61,196 +63,235 @@ const Navbar = () => {
     return () => window.removeEventListener('scroll', handleScroll);
   }, [lastScrollY]);
 
+  // Handle orientation change
+  useEffect(() => {
+    const handleOrientationChange = () => {
+      // Close mobile menu on orientation change
+      setIsMobileMenuOpen(false);
+      setShowProfileMenu(false);
+      document.body.style.overflow = 'auto';
+    };
+
+    window.addEventListener('orientationchange', handleOrientationChange);
+    window.addEventListener('resize', handleOrientationChange);
+    
+    return () => {
+      window.removeEventListener('orientationchange', handleOrientationChange);
+      window.removeEventListener('resize', handleOrientationChange);
+    };
+  }, []);
+
   const navItems = [
     { name: 'Dashboard', link: '/dashboard' },
     { name: 'Clients', link: '/clients' },
   ];
 
-  return (
-    <nav
-      className={`fixed w-full z-[1000] transition-all duration-500 ease-out border-b border-slate-200/60 bg-white/90 backdrop-blur ${
-        showNavbar ? 'translate-y-0 shadow-lg' : '-translate-y-full shadow-none'
-      } apple-navbar`}
-    >
-      <div className="max-w-7xl mx-auto flex items-center justify-between px-4 sm:px-8 h-16 md:h-18">
-        {/* Logo */}
-        <NavLink to="/dashboard" className="flex items-center gap-2 min-w-[140px] md:min-w-[180px] group">
-          <div className="zenitech-brand text-orange-700 font-extrabold tracking-wide group-hover:text-orange-800 transition-colors duration-300">
-            Zenitech Admin
-          </div>
-        </NavLink>
+  // Return null early if we should hide the navbar
+  if (hide) return null;
 
-        {/* Nav Links (Desktop) */}
-        <div className="hidden md:flex gap-1 items-center justify-center flex-1">
-          {navItems.map((item) => (
-            <NavLink
-              key={item.name}
-              to={item.link}
-              className={({ isActive }) =>
-                `apple-nav-link font-medium px-4 py-2.5 relative transition-all duration-300 rounded-xl hover:scale-105 ${
-                  isActive
-                    ? 'text-orange-600 bg-orange-50/80 shadow-sm scale-105'
-                    : 'text-slate-700 hover:text-orange-600 hover:bg-orange-50/80'
-                }`
-              }
+  return (
+    <>
+      <nav
+        className={`fixed w-full z-[1000] transition-all duration-500 ease-out ${
+          showNavbar ? 'translate-y-0' : '-translate-y-full'
+        } enhanced-navbar`}
+      >
+        <div className="max-w-7xl mx-auto flex items-center justify-between px-3 sm:px-6 lg:px-8 h-14 sm:h-16 lg:h-18">
+          {/* Logo */}
+          <NavLink to="/dashboard" className="flex items-center gap-2 sm:gap-3 group z-10">
+            <div className="relative">
+              <img 
+                src={Logo} 
+                alt="Zenitech Solutions Logo" 
+                className="w-8 h-8 sm:w-10 sm:h-10 lg:w-12 lg:h-12 rounded-full shadow-sm transition-transform duration-300 group-hover:scale-105" 
+              />
+              <div className="absolute inset-0 bg-gradient-to-r from-orange-500/20 to-blue-500/20 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+            </div>
+            <div className="font-bold text-orange-500 text-sm sm:text-xl lg:text-2xl xl:text-3xl transition-colors duration-300 group-hover:text-orange-600">
+              Zenitech <span className="text-blue-500 group-hover:text-blue-600">Solutions</span>
+            </div>
+          </NavLink>
+
+          {/* Nav Links (Desktop) */}
+          <div className="hidden lg:flex gap-1 items-center justify-center flex-1 max-w-md">
+            {navItems.map((item) => (
+              <NavLink
+                key={item.name}
+                to={item.link}
+                className={({ isActive }) =>
+                  `nav-link font-medium px-4 py-2.5 relative transition-all duration-300 rounded-xl hover:scale-105 ${
+                    isActive
+                      ? 'text-orange-600 bg-orange-50/80 shadow-sm scale-105'
+                      : 'text-slate-700 hover:text-orange-600 hover:bg-orange-50/80'
+                  }`
+                }
+              >
+                {item.name}
+                <span className="nav-underline" />
+              </NavLink>
+            ))}
+          </div>
+
+          {/* User Actions (Desktop) */}
+          <div className="flex items-center gap-2 sm:gap-3">
+            {user ? (
+              <div className="hidden sm:flex items-center gap-3">
+                {/* Profile Dropdown */}
+                <div className="relative" ref={profileMenuRef}>
+                  <button
+                    onClick={() => setShowProfileMenu(!showProfileMenu)}
+                    className="profile-trigger flex items-center gap-2 p-2 pr-3 sm:pr-4 rounded-xl bg-gradient-to-r from-orange-50 to-orange-50 hover:from-orange-100 hover:to-orange-100 text-slate-700 hover:text-slate-900 transition-all duration-300 hover:scale-105 shadow-sm hover:shadow-md"
+                    aria-label="User menu"
+                  >
+                    <div className="w-7 h-7 sm:w-8 sm:h-8 bg-gradient-to-br from-orange-400 to-orange-600 rounded-lg flex items-center justify-center text-white font-semibold text-xs sm:text-sm shadow-sm">
+                      {user.name ? user.name.charAt(0).toUpperCase() : user.email.charAt(0).toUpperCase()}
+                    </div>
+                    <span className="font-medium text-xs sm:text-sm hidden md:block max-w-20 lg:max-w-none truncate">
+                      {user.name || user.email.split('@')[0]}
+                    </span>
+                    <ChevronDown size={14} className={`transition-transform duration-300 ${showProfileMenu ? 'rotate-180' : ''}`} />
+                  </button>
+
+                  {/* Profile Dropdown Menu */}
+                  <div className={`profile-menu absolute top-full right-0 bg-white/95 backdrop-blur-xl shadow-2xl rounded-2xl py-3 min-w-[200px] sm:min-w-[220px] mt-2 border border-slate-200/50 transition-all duration-300 ${
+                    showProfileMenu ? 'opacity-100 visible translate-y-0' : 'opacity-0 invisible -translate-y-4'
+                  }`}>
+                    <div className="px-4 py-3 border-b border-slate-100">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-gradient-to-br from-orange-400 to-orange-600 rounded-xl flex items-center justify-center text-white font-bold shadow-sm">
+                          {user.name ? user.name.charAt(0).toUpperCase() : user.email.charAt(0).toUpperCase()}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-semibold text-slate-900 text-sm truncate">{user.name || user.email.split('@')[0]}</p>
+                          <p className="text-xs text-slate-500 truncate">{user.email}</p>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    {/* Minimal menu: removed Profile and Settings */}
+                    
+                    <div className="border-t border-slate-100 pt-2">
+                      <button
+                        onClick={handleLogout}
+                        className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50/80 hover:text-red-700 transition-all duration-200"
+                      >
+                        <LogOut size={16} />
+                        Logout
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <NavLink
+                to="/login"
+                className="hidden sm:inline-block sign-in-btn px-4 lg:px-6 py-2.5 lg:py-3 text-white bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 rounded-xl font-semibold text-xs sm:text-sm transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105"
+              >
+                Sign In
+              </NavLink>
+            )}
+            
+            <button 
+              onClick={toggleMobileMenu} 
+              className="sm:hidden lg:hidden focus:outline-none p-2 rounded-xl hover:bg-slate-100 text-slate-600 hover:text-slate-800 transition-all duration-300 hover:scale-110"
+              aria-label="Toggle mobile menu"
             >
-              {item.name}
-              <span className="apple-underline" />
-            </NavLink>
-          ))}
+              {isMobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
+            </button>
+
+            {/* Tablet menu button */}
+            <button 
+              onClick={toggleMobileMenu} 
+              className="hidden sm:block lg:hidden focus:outline-none p-2.5 rounded-xl hover:bg-slate-100 text-slate-600 hover:text-slate-800 transition-all duration-300 hover:scale-110"
+              aria-label="Toggle menu"
+            >
+              {isMobileMenuOpen ? <X size={22} /> : <Menu size={22} />}
+            </button>
+          </div>
         </div>
 
-        {/* User Actions (Desktop) */}
-        <div className="flex items-center gap-3 min-w-[40px] md:min-w-[200px] justify-end">
-          {user ? (
-            <div className="hidden md:flex items-center gap-3">
-              {/* Profile Dropdown */}
-              <div className="relative" ref={profileMenuRef}>
-                <button
-                  onClick={() => setShowProfileMenu(!showProfileMenu)}
-                  className="flex items-center gap-2 p-2 pr-4 rounded-xl bg-gradient-to-r from-orange-50 to-orange-50 hover:from-orange-100 hover:to-orange-100 text-slate-700 hover:text-slate-900 transition-all duration-300 hover:scale-105 shadow-sm hover:shadow-md"
-                >
-                  <div className="w-8 h-8 bg-gradient-to-br from-orange-400 to-orange-600 rounded-lg flex items-center justify-center text-white font-semibold text-sm shadow-sm">
-                    {user.name ? user.name.charAt(0).toUpperCase() : user.email.charAt(0).toUpperCase()}
-                  </div>
-                  <span className="font-medium text-sm hidden lg:block">
-                    {user.name || user.email.split('@')[0]}
-                  </span>
-                  <ChevronDown size={16} className={`transition-transform duration-300 ${showProfileMenu ? 'rotate-180' : ''}`} />
-                </button>
-
-                {/* Profile Dropdown Menu */}
-                <div className={`absolute top-full right-0 bg-white/95 shadow-2xl rounded-2xl py-3 min-w-[220px] mt-2 border border-slate-200/50 transition-all duration-300 ${
-                  showProfileMenu ? 'opacity-100 visible translate-y-0' : 'opacity-0 invisible -translate-y-4'
-                }`}>
-                  <div className="px-4 py-3 border-b border-slate-100">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 bg-gradient-to-br from-orange-400 to-orange-600 rounded-xl flex items-center justify-center text-white font-bold shadow-sm">
-                        {user.name ? user.name.charAt(0).toUpperCase() : user.email.charAt(0).toUpperCase()}
-                      </div>
-                      <div>
-                        <p className="font-semibold text-slate-900 text-sm">{user.name || user.email.split('@')[0]}</p>
-                        <p className="text-xs text-slate-500">{user.email}</p>
-                      </div>
+        {/* Mobile/Tablet Menu */}
+        <div className={`mobile-menu lg:hidden transition-all duration-300 ease-out ${
+          isMobileMenuOpen ? 'max-h-screen opacity-100' : 'max-h-0 opacity-0'
+        } overflow-hidden`}>
+          <div className="bg-white/95 backdrop-blur-xl border-t border-slate-200/60 shadow-xl">
+            <div className="px-4 sm:px-6 py-4 max-h-[calc(100vh-4rem)] overflow-y-auto">
+              {user && (
+                <div className="mb-6 p-4 bg-gradient-to-r from-orange-50 to-blue-50 rounded-2xl">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="w-12 h-12 bg-gradient-to-br from-orange-400 to-orange-600 rounded-xl flex items-center justify-center text-white font-bold shadow-sm">
+                      {user.name ? user.name.charAt(0).toUpperCase() : user.email.charAt(0).toUpperCase()}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-slate-900 truncate">{user.name || user.email.split('@')[0]}</p>
+                      <p className="text-sm text-slate-600 truncate">{user.email}</p>
                     </div>
                   </div>
                   
-                  <button
-                    onClick={handleProfileClick}
-                    className="w-full flex items-center gap-3 px-4 py-3 text-sm text-slate-700 hover:bg-orange-50/80 hover:text-orange-600 transition-all duration-200"
-                  >
-                    <User size={16} />
-                    View Profile
-                  </button>
-                  
-                  <div className="border-t border-slate-100 mt-2 pt-2">
+                  <div className="mt-2">
                     <button
                       onClick={handleLogout}
-                      className="w-full flex items-center gap-3 px-4 py-3 text-sm text-red-600 hover:bg-red-50/80 hover:text-red-700 transition-all duration-200"
+                      className="w-full flex items-center justify-center gap-2 py-2.5 px-3 bg-red-50 hover:bg-red-100 text-red-600 hover:text-red-700 rounded-xl font-medium text-sm transition-all duration-200"
                     >
                       <LogOut size={16} />
                       Logout
                     </button>
                   </div>
                 </div>
+              )}
+
+              <div className="space-y-1">
+                {navItems.map((item) => (
+                  <NavLink
+                    key={item.name}
+                    to={item.link}
+                    className={({ isActive }) =>
+                      `block py-4 px-4 font-semibold rounded-xl transition-all duration-200 ${
+                        isActive 
+                          ? 'text-orange-600 bg-orange-50' 
+                          : 'text-slate-800 hover:text-orange-600 hover:bg-orange-50/50'
+                      }`
+                    }
+                    onClick={() => setIsMobileMenuOpen(false)}
+                  >
+                    {item.name}
+                  </NavLink>
+                ))}
               </div>
+              
+              {!user && (
+                <div className="pt-4 mt-4 border-t border-slate-200">
+                  <NavLink
+                    to="/login"
+                    className="block w-full text-center bg-gradient-to-r from-orange-500 to-orange-600 text-white px-6 py-4 rounded-xl font-semibold shadow-lg transform transition-all duration-300 hover:shadow-xl hover:scale-[1.02]"
+                    onClick={() => setIsMobileMenuOpen(false)}
+                  >
+                    Sign In
+                  </NavLink>
+                </div>
+              )}
             </div>
-          ) : (
-            <NavLink
-              to="/login"
-              className="hidden md:inline-block apple-contact-btn px-6 py-3 text-white bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 rounded-xl font-semibold text-sm transition-all duration-300 shadow-lg hover:shadow-xl transform hover:scale-105"
-            >
-              Sign In
-            </NavLink>
-          )}
-          
-          <button 
-            onClick={toggleMobileMenu} 
-            className="md:hidden focus:outline-none p-2.5 rounded-xl hover:bg-slate-100 text-slate-600 hover:text-slate-800 transition-all duration-300 hover:scale-110"
-          >
-            {isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
-          </button>
-        </div>
-      </div>
-
-      {/* Mobile Menu */}
-      {isMobileMenuOpen && (
-        <div className="md:hidden apple-mobile-menu bg-white/95 border-t border-slate-200/60 backdrop-blur-xl">
-          <div className="px-4 py-4 max-h-[80vh] overflow-y-auto">
-            {user && (
-              <div className="mb-6 p-4 bg-gradient-to-r from-orange-50 to-orange-50 rounded-2xl">
-                <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 bg-gradient-to-br from-orange-400 to-orange-600 rounded-xl flex items-center justify-center text-white font-bold shadow-sm">
-                    {user.name ? user.name.charAt(0).toUpperCase() : user.email.charAt(0).toUpperCase()}
-                  </div>
-                  <div>
-                    <p className="font-semibold text-slate-900">{user.name || user.email.split('@')[0]}</p>
-                    <p className="text-sm text-slate-600">{user.email}</p>
-                  </div>
-                </div>
-                <div className="flex gap-2 mt-4">
-                  <button
-                    onClick={() => { handleProfileClick(); toggleMobileMenu(); }}
-                    className="flex-1 flex items-center justify-center gap-2 py-2.5 px-4 bg-white/80 hover:bg-white text-slate-700 rounded-xl font-medium text-sm transition-all duration-200"
-                  >
-                    <User size={16} />
-                    Profile
-                  </button>
-                  <button
-                    onClick={() => { handleLogout(); toggleMobileMenu(); }}
-                    className="flex-1 flex items-center justify-center gap-2 py-2.5 px-4 bg-red-50 hover:bg-red-100 text-red-600 rounded-xl font-medium text-sm transition-all duration-200"
-                  >
-                    <LogOut size={16} />
-                    Logout
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {navItems.map((item) => (
-              <NavLink
-                key={item.name}
-                to={item.link}
-                className={({ isActive }) =>
-                  `block py-4 font-semibold border-b border-slate-100 last:border-b-0 transition-colors duration-200 ${
-                    isActive ? 'text-orange-600' : 'text-slate-800 hover:text-orange-600'
-                  }`
-                }
-                onClick={toggleMobileMenu}
-              >
-                {item.name}
-              </NavLink>
-            ))}
-            
-            {!user && (
-              <div className="pt-4">
-                <NavLink
-                  to="/login"
-                  className="block w-full text-center bg-gradient-to-r from-orange-500 to-orange-600 text-white px-6 py-4 rounded-xl font-semibold shadow-lg transform transition-all duration-300 hover:shadow-xl"
-                  onClick={toggleMobileMenu}
-                >
-                  Sign In
-                </NavLink>
-              </div>
-            )}
           </div>
         </div>
-      )}
+      </nav>
 
-      <style>{`
-        .apple-navbar {
-          box-shadow: 0 4px 32px rgba(0,0,0,0.08);
-          border-bottom: 1px solid rgba(226,232,240,0.6);
+      <style jsx>{`
+        .enhanced-navbar {
+          background: rgba(255, 255, 255, 0.95);
+          backdrop-filter: blur(20px);
+          -webkit-backdrop-filter: blur(20px);
+          border-bottom: 1px solid rgba(226, 232, 240, 0.6);
+          box-shadow: 0 4px 32px rgba(0, 0, 0, 0.08);
         }
         
-        .apple-nav-link {
+        .nav-link {
           position: relative;
           font-size: 0.95rem;
           font-weight: 500;
           letter-spacing: -0.01em;
         }
         
-        .apple-underline {
+        .nav-underline {
           position: absolute;
           left: 50%;
           right: 50%;
@@ -261,52 +302,99 @@ const Navbar = () => {
           transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
         }
         
-        .apple-nav-link:hover .apple-underline {
+        .nav-link:hover .nav-underline {
           left: 12px;
           right: 12px;
         }
         
-        .apple-contact-btn {
+        .sign-in-btn {
           letter-spacing: -0.01em;
           border: 1px solid rgba(249, 115, 22, 0.2);
         }
         
-        .apple-mobile-menu {
-          animation: slideDown 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        .profile-trigger:hover {
+          transform: translateY(-1px) scale(1.02);
+        }
+        
+        .profile-menu {
+          box-shadow: 0 20px 40px -12px rgba(0, 0, 0, 0.25);
+        }
+        
+        .mobile-menu {
           box-shadow: 0 20px 40px -8px rgba(0, 0, 0, 0.12);
         }
         
-        @keyframes slideDown {
-          from {
-            opacity: 0;
-            transform: translateY(-20px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-        
-        .zenitech-brand {
-          font-size: 1.4rem;
-          line-height: 1.2;
-          letter-spacing: -0.02em;
-          font-weight: 800;
-        }
-        
-        @media (min-width: 768px) {
-          .zenitech-brand {
-            font-size: 1.7rem;
-          }
-        }
-        
+        /* Enhanced responsive breakpoints */
         @media (max-width: 640px) {
-          .zenitech-brand {
-            font-size: 1.25rem;
+          .enhanced-navbar {
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
           }
+        }
+        
+        /* Landscape mobile optimization */
+        @media screen and (max-height: 500px) and (orientation: landscape) {
+          .mobile-menu > div > div {
+            max-height: calc(100vh - 3rem);
+            padding: 1rem;
+          }
+          
+          .mobile-menu .space-y-1 > * {
+            padding: 0.75rem 1rem;
+          }
+        }
+        
+        /* High DPI displays */
+        @media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
+          .enhanced-navbar {
+            border-bottom: 0.5px solid rgba(226, 232, 240, 0.8);
+          }
+        }
+        
+        /* Tablet landscape specific */
+        @media (min-width: 768px) and (max-width: 1023px) and (orientation: landscape) {
+          .profile-menu {
+            min-width: 200px;
+          }
+        }
+        
+        /* Ultra-wide screen optimization */
+        @media (min-width: 1536px) {
+          .enhanced-navbar > div {
+            padding-left: 2rem;
+            padding-right: 2rem;
+          }
+        }
+        
+        /* Reduce motion for accessibility */
+        @media (prefers-reduced-motion: reduce) {
+          .enhanced-navbar,
+          .nav-link,
+          .nav-underline,
+          .profile-trigger,
+          .profile-menu,
+          .mobile-menu {
+            transition: none;
+            animation: none;
+          }
+        }
+        
+        /* Dark mode support */
+        @media (prefers-color-scheme: dark) {
+          .enhanced-navbar {
+            background: rgba(255, 255, 255, 0.95);
+            border-bottom-color: rgba(51, 65, 85, 0.6);
+          }
+        }
+        
+        /* Focus visible styles for accessibility */
+        .nav-link:focus-visible,
+        .sign-in-btn:focus-visible {
+          outline: 2px solid #f97316;
+          outline-offset: 2px;
         }
       `}</style>
-    </nav>
+    </>
   );
 };
 

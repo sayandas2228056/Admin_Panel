@@ -1,9 +1,10 @@
-import React, { useEffect, useState } from "react";
-import { Ticket, Clock, RefreshCw, Search, Filter, AlertCircle, Camera } from "lucide-react";
-import { useNavigate } from 'react-router-dom'
+import React, { useEffect, useState, useCallback } from "react";
+import { Ticket, Clock, RefreshCw, Search, AlertCircle, Menu } from "lucide-react";
+import { useNavigate } from 'react-router-dom';
 import Cards from "../Components/Cards";
 import { useAuth } from "../context/AuthContext";
 import ScreenshotUpload from "../Components/ScreenshotUpload";
+import SupportNavbar from "../Components/SupportNavbar";
 
 const Dashboard = () => {
   const { user, logout } = useAuth();
@@ -15,47 +16,82 @@ const Dashboard = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
   const [showScreenshotModal, setShowScreenshotModal] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  const fetchTickets = async () => {
+
+  const toggleMobileMenu = () => {
+    setMobileMenuOpen(!mobileMenuOpen);
+  };
+
+  const fetchTickets = useCallback(async () => {
     setLoading(true);
     try {
       const token = localStorage.getItem('token');
-      if (!token) throw new Error('Unauthorized');
+      if (!token) {
+        throw new Error('Unauthorized');
+      }
+      
       const api = import.meta.env.VITE_ADMIN_API;
+      if (!api) {
+        throw new Error('API URL not configured');
+      }
+
       const res = await fetch(`${api}/api/tickets`, {
         headers: {
           'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
         },
         credentials: 'include',
       });
+
       if (res.status === 401) {
         logout();
         navigate('/login');
         return;
       }
+
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(data.message || 'Failed to fetch tickets');
+        throw new Error(data.message || `HTTP ${res.status}: Failed to fetch tickets`);
       }
+
       const data = await res.json();
-      setTickets(data);
+      setTickets(Array.isArray(data) ? data : []);
       setError(null);
     } catch (e) {
+      console.error('Error fetching tickets:', e);
       setError(e.message || 'Failed to load tickets');
+      setTickets([]);
     } finally {
       setLoading(false);
     }
-  }
+  }, [logout, navigate]);
 
   // Function to refresh tickets
-  const refreshTickets = () => {
+  const refreshTickets = useCallback(() => {
     fetchTickets();
-  };
+  }, [fetchTickets]);
 
   const handleStatusChange = async (ticketId, newStatus) => {
+    if (!ticketId || !newStatus) {
+      console.error('Invalid ticket ID or status');
+      return;
+    }
+
     const token = localStorage.getItem('token');
+    if (!token) {
+      alert('Authentication required');
+      return;
+    }
+
+    // Store original state for rollback
+    const originalTickets = [...tickets];
+    
     // Optimistic update
-    setTickets((prev) => prev.map((t) => (t._id === ticketId ? { ...t, status: newStatus } : t)));
+    setTickets((prev) => 
+      prev.map((t) => t._id === ticketId ? { ...t, status: newStatus } : t)
+    );
+
     try {
       const api = import.meta.env.VITE_ADMIN_API;
       const res = await fetch(`${api}/api/tickets/${ticketId}`, {
@@ -67,17 +103,22 @@ const Dashboard = () => {
         body: JSON.stringify({ status: newStatus }),
         credentials: 'include',
       });
+
       if (!res.ok) {
-        throw new Error('Failed to update status');
+        throw new Error(`Failed to update status: ${res.status}`);
       }
+
       const updated = await res.json();
-      setTickets((prev) => prev.map((t) => (t._id === ticketId ? updated : t)));
+      setTickets((prev) => 
+        prev.map((t) => t._id === ticketId ? updated : t)
+      );
     } catch (e) {
-      // Revert if failed
-      await fetchTickets();
-      alert('Failed to update status');
+      console.error('Error updating status:', e);
+      // Rollback optimistic update
+      setTickets(originalTickets);
+      alert('Failed to update status. Please try again.');
     }
-  }
+  };
 
   // Set up a listener for the popstate event to detect when user navigates back
   useEffect(() => {
@@ -86,41 +127,61 @@ const Dashboard = () => {
         refreshTickets();
       }
     };
+    
     window.addEventListener('popstate', handlePopState);
     return () => {
       window.removeEventListener('popstate', handlePopState);
     };
-  }, []);
+  }, [refreshTickets]);
 
   // Initial fetch and setup
   useEffect(() => {
     fetchTickets();
+    
     const shouldRefresh = sessionStorage.getItem('shouldRefreshTickets');
     if (shouldRefresh) {
-      fetchTickets();
       sessionStorage.removeItem('shouldRefreshTickets');
     }
-  }, []);
+  }, [fetchTickets]);
 
   const handleDelete = async (ticketId) => {
-    if (window.confirm("Are you sure you want to delete this ticket?")) {
-      try {
-        setDeletingId(ticketId);
-        const token = localStorage.getItem('token');
-        const api = import.meta.env.VITE_ADMIN_API;
-        const res = await fetch(`${api}/api/tickets/${ticketId}`, {
-          method: 'DELETE',
-          headers: { 'Authorization': `Bearer ${token}` },
-          credentials: 'include',
-        });
-        if (!res.ok) throw new Error('Failed to delete ticket');
-        setTickets((prev) => prev.filter(ticket => ticket._id !== ticketId));
-      } catch (err) {
-        console.error('Error deleting ticket:', err);
-        alert('Failed to delete ticket. Please try again.');
-      } finally {
-        setDeletingId(null);
+    if (!ticketId) {
+      console.error('Invalid ticket ID');
+      return;
+    }
+
+    if (!window.confirm("Are you sure you want to delete this ticket?")) {
+      return;
+    }
+
+    try {
+      setDeletingId(ticketId);
+      const token = localStorage.getItem('token');
+      
+      if (!token) {
+        throw new Error('Authentication required');
       }
+
+      const api = import.meta.env.VITE_ADMIN_API;
+      const res = await fetch(`${api}/api/tickets/${ticketId}`, {
+        method: 'DELETE',
+        headers: { 
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        credentials: 'include',
+      });
+
+      if (!res.ok) {
+        throw new Error(`Failed to delete ticket: ${res.status}`);
+      }
+
+      setTickets((prev) => prev.filter(ticket => ticket._id !== ticketId));
+    } catch (err) {
+      console.error('Error deleting ticket:', err);
+      alert(`Failed to delete ticket: ${err.message}`);
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -131,6 +192,20 @@ const Dashboard = () => {
     const matchesStatus = statusFilter === "All" || ticket.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
+
+  // Close mobile menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (mobileMenuOpen && !event.target.closest('.sidebar-container')) {
+        setMobileMenuOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [mobileMenuOpen]);
 
   if (loading) {
     return (
@@ -152,16 +227,7 @@ const Dashboard = () => {
       <div className="mt-20 min-h-screen bg-gradient-to-br from-amber-50 via-orange-50 to-red-50 flex items-center justify-center p-4">
         <div className="bg-white/90 backdrop-blur-sm p-10 rounded-3xl shadow-2xl border border-orange-200 max-w-md text-center">
           <div className="w-20 h-20 bg-gradient-to-r from-red-100 to-orange-100 rounded-full flex items-center justify-center mx-auto mb-6">
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6">
-              <h1 className="text-3xl font-bold text-gray-800 mb-4 md:mb-0">Dashboard</h1>
-              <button
-                onClick={() => setShowScreenshotModal(true)}
-                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
-              >
-                <Camera size={18} />
-                <span>Report an Issue</span>
-              </button>
-            </div>
+            <AlertCircle className="w-10 h-10 text-red-500" />
           </div>
           <p className="text-gray-600 mb-6 leading-relaxed">
             {error === 'Forbidden' 
@@ -169,7 +235,7 @@ const Dashboard = () => {
               : error}
           </p>
           <button 
-            onClick={() => fetchTickets()}
+            onClick={fetchTickets}
             className="w-full bg-gradient-to-r from-orange-500 to-amber-600 hover:from-orange-600 hover:to-amber-700 text-white font-semibold py-3 px-6 rounded-2xl transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl mb-3"
           >
             <RefreshCw className="w-5 h-5 inline mr-2" />
@@ -179,164 +245,194 @@ const Dashboard = () => {
             onClick={() => window.location.reload()}
             className="w-full bg-gray-100 hover:bg-gray-200 text-gray-800 font-semibold py-3 px-6 rounded-2xl transition-all duration-300"
           >
-            Close
+            Reload Page
           </button>
         </div>
       </div>
     );
   }
 
+  // Main content margin to accommodate sidebar width
+  const mainContentMargin = 'md:ml-64';
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-amber-50 via-orange-50 to-red-50 pt-20">
-      {/* Decorative Background Elements */}
-      <div className="fixed inset-0 overflow-hidden pointer-events-none -z-10">
-        <div className="absolute -top-40 -right-40 w-80 h-80 bg-gradient-to-br from-orange-200/30 to-amber-200/30 rounded-full blur-3xl"></div>
-        <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-gradient-to-tr from-red-200/30 to-orange-200/30 rounded-full blur-3xl"></div>
+    <div className="min-h-screen bg-gradient-to-br from-amber-50 via-orange-50 to-red-50 flex">
+      {/* Mobile menu button */}
+      <div className="md:hidden fixed top-4 left-4 z-50">
+        <button
+          onClick={toggleMobileMenu}
+          className="p-2 rounded-lg bg-white shadow-md text-gray-700 hover:bg-gray-100 transition-colors duration-200"
+          aria-label="Toggle menu"
+        >
+          <Menu size={24} />
+        </button>
       </div>
 
-      {/* Header */}
-      <div className="bg-white/90 backdrop-blur-md border-b border-orange-200/50 fixed top-16 left-0 right-0 z-50 shadow-md transition-all duration-300">
-        <div className="max-w-7xl mx-auto px-6 py-6">
-          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
-            <div className="space-y-2">
-              <h1 className="text-4xl font-bold bg-gradient-to-r from-amber-700 via-orange-600 to-red-600 bg-clip-text text-transparent">
-                Support Dashboard
-              </h1>
-              <p className="text-amber-700/80 font-medium">Manage and track your support tickets seamlessly</p>
+      {/* Sidebar (Support Dashboard) */}
+      <div className={`sidebar-container fixed inset-y-0 left-0 z-40 transform ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 transition-transform duration-300 ease-in-out`}>
+        <SupportNavbar
+          searchTerm={searchTerm}
+          setSearchTerm={setSearchTerm}
+          statusFilter={statusFilter}
+          setStatusFilter={setStatusFilter}
+          onRefresh={fetchTickets}
+        />
+      </div>
+
+      {/* Overlay for mobile */}
+      {mobileMenuOpen && (
+        <div 
+          className="fixed inset-0 bg-black/50 z-30 md:hidden"
+          onClick={toggleMobileMenu}
+          aria-label="Close menu"
+        ></div>
+      )}
+
+      {/* Main Content */}
+      <div className={`flex-1 ${mainContentMargin} transition-all duration-300 ease-in-out min-h-screen`}>
+        {/* Decorative Background Elements */}
+        <div className="fixed inset-0 overflow-hidden pointer-events-none -z-10">
+          <div className="absolute -top-40 -right-40 w-80 h-80 bg-gradient-to-br from-orange-200/30 to-amber-200/30 rounded-full blur-3xl"></div>
+          <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-gradient-to-tr from-red-200/30 to-orange-200/30 rounded-full blur-3xl"></div>
+        </div>
+
+        {/* Main Content Section */}
+        <div className="relative max-w-7xl mx-auto px-6 py-10">
+
+          {/* Stats Cards */}
+          <div className="mt-8 md:mt-16 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
+            <div className="bg-white/80 backdrop-blur-sm p-6 rounded-3xl shadow-lg border border-orange-200/50 hover:shadow-xl transition-all duration-300 group">
+              <div className="flex items-center gap-4">
+                <div className="w-14 h-14 bg-gradient-to-r from-orange-500 to-amber-500 rounded-2xl flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform duration-300">
+                  <Ticket className="w-7 h-7 text-white" />
+                </div>
+                <div>
+                  <p className="text-amber-700 text-sm font-semibold uppercase tracking-wider">Total Tickets</p>
+                  <p className="text-3xl font-bold text-gray-900">{tickets.length}</p>
+                </div>
+              </div>
             </div>
             
-            <div className="flex flex-col sm:flex-row gap-4">
-              {/* Search Bar */}
-              <div className="relative group">
-                <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-amber-600/60 w-5 h-5 transition-colors group-focus-within:text-orange-600" />
-                <input
-                  type="text"
-                  placeholder="Search tickets, names, tokens..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-12 pr-4 py-3.5 border border-orange-200 rounded-2xl focus:ring-2 focus:ring-orange-400/50 focus:border-orange-400 outline-none transition-all duration-300 w-full sm:w-72 bg-white/90 backdrop-blur-sm text-gray-900 placeholder-amber-600/60"
-                />
+            <div className="bg-white/80 backdrop-blur-sm p-6 rounded-3xl shadow-lg border border-orange-200/50 hover:shadow-xl transition-all duration-300 group">
+              <div className="flex items-center gap-4">
+                <div className="w-14 h-14 bg-gradient-to-r from-emerald-500 to-teal-500 rounded-2xl flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform duration-300">
+                  <Clock className="w-7 h-7 text-white" />
+                </div>
+                <div>
+                  <p className="text-amber-700 text-sm font-semibold uppercase tracking-wider">Open</p>
+                  <p className="text-3xl font-bold text-gray-900">
+                    {tickets.filter(t => t.status === "Open").length}
+                  </p>
+                </div>
               </div>
-              
-              {/* Status Filter */}
-              <div className="relative group">
-                <Filter className="absolute left-4 top-1/2 transform -translate-y-1/2 text-amber-600/60 w-5 h-5 transition-colors group-focus-within:text-orange-600" />
-                <select
-                  value={statusFilter}
-                  onChange={(e) => setStatusFilter(e.target.value)}
-                  className="pl-12 pr-10 py-3.5 border border-orange-200 rounded-2xl focus:ring-2 focus:ring-orange-400/50 focus:border-orange-400 outline-none transition-all duration-300 bg-white/90 backdrop-blur-sm appearance-none cursor-pointer text-gray-900"
-                >
-                  <option value="All">All Status</option>
-                  <option value="Open">Open</option>
-                  <option value="In Progress">In Progress</option>
-                  <option value="Closed">Closed</option>
-                </select>
+            </div>
+            
+            <div className="bg-white/80 backdrop-blur-sm p-6 rounded-3xl shadow-lg border border-orange-200/50 hover:shadow-xl transition-all duration-300 group">
+              <div className="flex items-center gap-4">
+                <div className="w-14 h-14 bg-gradient-to-r from-amber-500 to-yellow-500 rounded-2xl flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform duration-300">
+                  <RefreshCw className="w-7 h-7 text-white" />
+                </div>
+                <div>
+                  <p className="text-amber-700 text-sm font-semibold uppercase tracking-wider">In Progress</p>
+                  <p className="text-3xl font-bold text-gray-900">
+                    {tickets.filter(t => t.status === "In Progress").length}
+                  </p>
+                </div>
               </div>
-              
-              {/* Refresh Button */}
+            </div>
+            
+            <div className="bg-white/80 backdrop-blur-sm p-6 rounded-3xl shadow-lg border border-orange-200/50 hover:shadow-xl transition-all duration-300 group">
+              <div className="flex items-center gap-4">
+                <div className="w-14 h-14 bg-gradient-to-r from-gray-500 to-slate-600 rounded-2xl flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform duration-300">
+                  <Ticket className="w-7 h-7 text-white" />
+                </div>
+                <div>
+                  <p className="text-amber-700 text-sm font-semibold uppercase tracking-wider">Closed</p>
+                  <p className="text-3xl font-bold text-gray-900">
+                    {tickets.filter(t => t.status === "Closed").length}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* No tickets message */}
+          {tickets.length === 0 && !loading ? (
+            <div className="text-center py-20">
+              <div className="w-24 h-24 bg-gradient-to-r from-orange-100 to-amber-100 rounded-full flex items-center justify-center mx-auto mb-6">
+                <Ticket className="w-12 h-12 text-orange-400" />
+              </div>
+              <h3 className="text-2xl font-bold text-gray-800 mb-2">No tickets found</h3>
+              <p className="text-gray-600 mb-6">There are no support tickets to display at the moment.</p>
               <button 
                 onClick={fetchTickets}
-                className="flex items-center gap-3 bg-gradient-to-r from-orange-500 to-amber-600 hover:from-orange-600 hover:to-amber-700 text-white font-semibold py-3.5 px-6 rounded-2xl transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl whitespace-nowrap"
+                className="bg-gradient-to-r from-orange-500 to-amber-600 hover:from-orange-600 hover:to-amber-700 text-white font-semibold py-3 px-6 rounded-2xl transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl"
               >
-                <RefreshCw className="w-5 h-5" />
+                <RefreshCw className="w-5 h-5 inline mr-2" />
                 Refresh
               </button>
             </div>
-          </div>
-        </div>
-      </div>
+          ) : (
+            <>
+              {/* Tickets Grid */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-8">
+                <Cards 
+                  tickets={filteredTickets} 
+                  deletingId={deletingId}
+                  onDelete={handleDelete}
+                  onStatusChange={handleStatusChange}
+                />
+              </div>
 
-      {/* Main Content */}
-      <div className="relative max-w-7xl mx-auto px-6 pt-28 pb-10">
-        {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
-          <div className="bg-white/80 backdrop-blur-sm p-6 rounded-3xl shadow-lg border border-orange-200/50 hover:shadow-xl transition-all duration-300 group">
-            <div className="flex items-center gap-4">
-              <div className="w-14 h-14 bg-gradient-to-r from-orange-500 to-amber-500 rounded-2xl flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform duration-300">
-                <Ticket className="w-7 h-7 text-white" />
-              </div>
-              <div>
-                <p className="text-amber-700 text-sm font-semibold uppercase tracking-wider">Total Tickets</p>
-                <p className="text-3xl font-bold text-gray-900">{tickets.length}</p>
-              </div>
-            </div>
-          </div>
-          
-          <div className="bg-white/80 backdrop-blur-sm p-6 rounded-3xl shadow-lg border border-orange-200/50 hover:shadow-xl transition-all duration-300 group">
-            <div className="flex items-center gap-4">
-              <div className="w-14 h-14 bg-gradient-to-r from-emerald-500 to-teal-500 rounded-2xl flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform duration-300">
-                <Clock className="w-7 h-7 text-white" />
-              </div>
-              <div>
-                <p className="text-amber-700 text-sm font-semibold uppercase tracking-wider">Open</p>
-                <p className="text-3xl font-bold text-gray-900">
-                  {tickets.filter(t => t.status === "Open").length}
-                </p>
-              </div>
-            </div>
-          </div>
-          
-          <div className="bg-white/80 backdrop-blur-sm p-6 rounded-3xl shadow-lg border border-orange-200/50 hover:shadow-xl transition-all duration-300 group">
-            <div className="flex items-center gap-4">
-              <div className="w-14 h-14 bg-gradient-to-r from-amber-500 to-yellow-500 rounded-2xl flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform duration-300">
-                <RefreshCw className="w-7 h-7 text-white" />
-              </div>
-              <div>
-                <p className="text-amber-700 text-sm font-semibold uppercase tracking-wider">In Progress</p>
-                <p className="text-3xl font-bold text-gray-900">
-                  {tickets.filter(t => t.status === "In Progress").length}
-                </p>
-              </div>
-            </div>
-          </div>
-          
-          <div className="bg-white/80 backdrop-blur-sm p-6 rounded-3xl shadow-lg border border-orange-200/50 hover:shadow-xl transition-all duration-300 group">
-            <div className="flex items-center gap-4">
-              <div className="w-14 h-14 bg-gradient-to-r from-gray-500 to-slate-600 rounded-2xl flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform duration-300">
-                <Ticket className="w-7 h-7 text-white" />
-              </div>
-              <div>
-                <p className="text-amber-700 text-sm font-semibold uppercase tracking-wider">Closed</p>
-                <p className="text-3xl font-bold text-gray-900">
-                  {tickets.filter(t => t.status === "Closed").length}
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
+              {/* Results Summary */}
+              {filteredTickets.length > 0 && (searchTerm || statusFilter !== "All") && (
+                <div className="mt-12 text-center">
+                  <div className="inline-flex items-center gap-2 bg-white/80 backdrop-blur-sm px-6 py-3 rounded-2xl border border-orange-200/50 shadow-lg">
+                    <Search className="w-5 h-5 text-amber-600" />
+                    <p className="text-amber-800 font-semibold">
+                      Showing {filteredTickets.length} of {tickets.length} tickets
+                      {searchTerm && ` matching "${searchTerm}"`}
+                      {statusFilter !== "All" && ` with status "${statusFilter}"`}
+                    </p>
+                  </div>
+                </div>
+              )}
 
-        {/* Tickets Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-8">
-          <Cards 
-            tickets={filteredTickets} 
-            deletingId={deletingId}
-            onDelete={handleDelete}
-            onStatusChange={handleStatusChange}
-          />
+              {/* No filtered results message */}
+              {filteredTickets.length === 0 && tickets.length > 0 && (
+                <div className="text-center py-20">
+                  <div className="w-24 h-24 bg-gradient-to-r from-orange-100 to-amber-100 rounded-full flex items-center justify-center mx-auto mb-6">
+                    <Search className="w-12 h-12 text-orange-400" />
+                  </div>
+                  <h3 className="text-2xl font-bold text-gray-800 mb-2">No matching tickets</h3>
+                  <p className="text-gray-600 mb-6">
+                    No tickets found matching your current filters.
+                    {searchTerm && ` Try different search terms.`}
+                  </p>
+                  <button 
+                    onClick={() => {
+                      setSearchTerm("");
+                      setStatusFilter("All");
+                    }}
+                    className="bg-gradient-to-r from-orange-500 to-amber-600 hover:from-orange-600 hover:to-amber-700 text-white font-semibold py-3 px-6 rounded-2xl transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl"
+                  >
+                    Clear Filters
+                  </button>
+                </div>
+              )}
+            </>
+          )}
         </div>
-
-        {/* Results Summary */}
-        {filteredTickets.length > 0 && (searchTerm || statusFilter !== "All") && (
-          <div className="mt-12 text-center">
-            <div className="inline-flex items-center gap-2 bg-white/80 backdrop-blur-sm px-6 py-3 rounded-2xl border border-orange-200/50 shadow-lg">
-              <Search className="w-5 h-5 text-amber-600" />
-              <p className="text-amber-800 font-semibold">
-                Showing {filteredTickets.length} of {tickets.length} tickets
-                {searchTerm && ` matching "${searchTerm}"`}
-                {statusFilter !== "All" && ` with status "${statusFilter}"`}
-              </p>
-            </div>
-          </div>
-        )}
       </div>
 
       {/* Screenshot Upload Modal */}
       {showScreenshotModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg w-full max-w-2xl relative">
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg w-full max-w-2xl relative max-h-[90vh] overflow-y-auto">
             <button
               onClick={() => setShowScreenshotModal(false)}
-              className="absolute top-4 right-4 text-gray-500 hover:text-gray-700"
+              className="absolute top-4 right-4 text-gray-500 hover:text-gray-700 z-10 w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 transition-colors duration-200"
+              aria-label="Close modal"
             >
               ✕
             </button>
