@@ -280,8 +280,8 @@ const Navbar = () => {
           background: rgba(255, 255, 255, 0.95);
           backdrop-filter: blur(20px);
           -webkit-backdrop-filter: blur(20px);
-          border-bottom: 1px solid rgba(226, 232, 240, 0.6);
-          box-shadow: 0 4px 32px rgba(0, 0, 0, 0.08);
+          border-bottom: none; /* remove thin line */
+          box-shadow: none; /* remove shadow that can appear as a line */
         }
         
         .nav-link {
@@ -347,7 +347,7 @@ const Navbar = () => {
         /* High DPI displays */
         @media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
           .enhanced-navbar {
-            border-bottom: 0.5px solid rgba(226, 232, 240, 0.8);
+            border-bottom: none; /* ensure no line on high-DPI */
           }
         }
         
@@ -383,7 +383,7 @@ const Navbar = () => {
         @media (prefers-color-scheme: dark) {
           .enhanced-navbar {
             background: rgba(255, 255, 255, 0.95);
-            border-bottom-color: rgba(51, 65, 85, 0.6);
+            border-bottom: none; /* remove line in dark mode too */
           }
         }
         
